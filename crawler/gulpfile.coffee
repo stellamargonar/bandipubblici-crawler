@@ -11,21 +11,22 @@ gulp.on 'err', (e) ->
   gutil.log e.err.stack
 
 gulp.task 'coffee', ->
-  gulp.src './src/**/*.coffee'
+  gulp.src './src/*.coffee'
     .pipe plumber() # Pevent pipe breaking caused by errors from gulp plugins
     .pipe coffee({bare: true})
     .pipe gulp.dest './lib/'
 
 gulp.task 'test', ['coffee'], ->
-  gulp.src ['lib/**/*.js']
+  gulp.src ['lib/*.js']
     .pipe(istanbul()) # Covering files
     .pipe(istanbul.hookRequire()) # Overwrite require so it returns the covered files
     .on 'finish', ->
-      gulp.src(['test/**/*.spec.coffee'])
+      gulp.src(['test/*.spec.coffee'])
         .pipe mocha reporter: 'spec', compilers: 'coffee:coffee-script'
         .pipe istanbul.writeReports() # Creating the reports after tests run
 
 gulp.task 'watch', ->
-  gulp.watch './src/**/*.coffee', ['coffee']
+  gulp.watch './src/*.coffee', ['coffee']
+  gulp.watch './test/*.coffee', ['test']
 
 gulp.task 'default', ['coffee']

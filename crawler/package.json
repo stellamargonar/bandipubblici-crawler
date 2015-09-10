@@ -22,6 +22,7 @@
     "test": "gulp test"
   },
   "dependencies": {
+    "simplecrawler": "^0.5.2"
   },
   "devDependencies": {
     "chai": "^1.9.1",
@@ -33,6 +34,7 @@
     "gulp-plumber": "^1.0.0",
     "gulp-util": "^3.0.0",
     "mocha": "^2.0.0",
+    "nock": "^2.10.0",
     "sinon": "^1.9.1",
     "sinon-chai": "^2.5.0"
   },
