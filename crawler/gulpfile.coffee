@@ -14,19 +14,28 @@ gulp.task 'coffee', ->
   gulp.src './src/*.coffee'
     .pipe plumber() # Pevent pipe breaking caused by errors from gulp plugins
     .pipe coffee({bare: true})
+    .on('error', errorHandler)
     .pipe gulp.dest './lib/'
 
 gulp.task 'test', ['coffee'], ->
   gulp.src ['lib/*.js']
     .pipe(istanbul()) # Covering files
     .pipe(istanbul.hookRequire()) # Overwrite require so it returns the covered files
+    .on('error', errorHandler)
     .on 'finish', ->
       gulp.src(['test/*.spec.coffee'])
         .pipe mocha reporter: 'spec', compilers: 'coffee:coffee-script'
+        .on('error', errorHandler)
         .pipe istanbul.writeReports() # Creating the reports after tests run
 
 gulp.task 'watch', ->
-  gulp.watch './src/*.coffee', ['coffee']
+  gulp.watch './src/*.coffee', ['coffee', 'test']
   gulp.watch './test/*.coffee', ['test']
 
 gulp.task 'default', ['coffee']
+
+
+# Handle the error
+errorHandler = (error) ->
+  console.log error.toString()
+  # this.emit 'end'
