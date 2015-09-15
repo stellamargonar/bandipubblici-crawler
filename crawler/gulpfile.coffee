@@ -11,7 +11,7 @@ gulp.on 'err', (e) ->
   gutil.log e.err.stack
 
 gulp.task 'coffee', ->
-  gulp.src './src/*.coffee'
+  gulp.src ['./src/*.coffee', './src/*/*.coffee']
     .pipe plumber() # Pevent pipe breaking caused by errors from gulp plugins
     .pipe coffee({bare: true})
     .on('error', errorHandler)

@@ -1,5 +1,10 @@
 chai = require 'chai'
 sinon = require 'sinon'
+
+# get config for testing environment
+process.env.NODE_ENV = 'testing'
+config = require '../config'
+
 # nock = require 'nock'
 # using compiled JavaScript file here to be sure module works
 extractLoadClass = require '../lib/extractLoad.js'

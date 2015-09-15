@@ -1,4 +1,5 @@
 cheerio = require 'cheerio'
+mongoose = require 'mongoose'
 
 class ExtractLoad
 
@@ -47,7 +48,14 @@ class ExtractLoad
 	add a call to the database, checking if the call is already stored
 	###
 	loadCall : (call, done) ->
+		matchCall = (call1, call2) ->
+			return (call1 is call2) or (call1.link is call2.link) 
 
+		# check if call is already in the database
+
+		# if yes, skip
+
+		# otherwise clean & save it
 
 
 
