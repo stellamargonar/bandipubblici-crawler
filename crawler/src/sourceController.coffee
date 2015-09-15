@@ -8,7 +8,7 @@ class SourceController
 	# Source = mongoose.model 'Source'
 
 	constructor : () ->
-		mongoose.createConnection ('mongodb://' + config.database.host + '/' + config.database.dbName)
+		mongoose.connect ('mongodb://' + config.database.host + '/' + config.database.dbName)
 
 	###
 	stores in the database the new source / or update if already existing
@@ -29,7 +29,6 @@ class SourceController
 		else
 			query.name = object.name if object.name
 			query.baseUrl = object.baseUrl if object.baseUrl
-
 		Source.find query, (err, docs) =>
 			if docs && docs[0]
 				if docs.length > 1
@@ -112,5 +111,9 @@ class SourceController
 		Source.findOne {baseUrl : url}, (err, res) =>
 			return done (res || undefined) 
 
+	readAll : (done) ->
+		console.log 'read all'
+		Source.find {} , (err, data) =>
+			done err, data
 
 module.exports = SourceController
