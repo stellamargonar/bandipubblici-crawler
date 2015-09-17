@@ -8,6 +8,8 @@ SourceSchema = new Schema
 	pattern : SchemaTypes.Mixed
 	maxDepth : Number
 	protocol : String
+	fetchRegex : String
+	saveRegex : String
 
 Source = mongoose.model 'Source', SourceSchema
 module.exports = 

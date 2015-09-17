@@ -3,6 +3,8 @@ async = require 'async'
 config = require '../config'
 Source = (require './models/source.schema.js').Source
 
+genericCrawlerClass = require './genericCrawler.js'
+
 class SourceController
 
 	# Source = mongoose.model 'Source'
@@ -115,5 +117,25 @@ class SourceController
 		console.log 'read all'
 		Source.find {} , (err, data) =>
 			done err, data
+
+	_getCrawler : () ->
+		console.log 'Called Original Function'
+		return new genericCrawlerClass()
+
+	tryConfiguration : (source, done) ->
+		if !source or !done or !source.baseUrl or !source.pattern.call
+			throw new Error 'MISSING PARAMETER'
+
+		crawler = @_getCrawler()
+		crawler.testSource source, (errors, calls) ->
+			console.log 'returned'
+			console.log errors
+			console.log calls
+			done errors, calls
+
+
+
+
+
 
 module.exports = SourceController

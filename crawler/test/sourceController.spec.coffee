@@ -17,8 +17,9 @@ describe 'sourceController', ->
     sourceController = null
 
     before (done) ->
-      mongoose.connect ('mongodb://' + config.database.host + '/' + config.database.dbName), done
+      # mongoose.connect ('mongodb://' + config.database.host + '/' + config.database.dbName), done
       sourceController = new sourceControllerClass()
+      done()
  
     afterEach (done) ->
       Source.remove {}, () ->
@@ -215,6 +216,49 @@ describe 'sourceController', ->
             expect(res).to.be.not.undefined
             expect(res._id).to.be.eql(resDB._id)
             done()
+
+    describe 'tryConfiguration', ->
+      it 'should throw error when source is missing' , ->
+        expect(  -> sourceController.tryConfiguration() ).to.throw('MISSING PARAMETER')
+      it 'should throw error when crawler is missing' , ->
+        expect(  -> sourceController.tryConfiguration({baseUrl: 'ciao', patterns :{call : 'ciao'}}) ).to.throw('MISSING PARAMETER')
+      # it 'should throw error when callback is missing' , ->
+      #   fakeCrawler = {}
+      #   expect(  -> sourceController.tryConfiguration({baseUrl: 'ciao', patterns :{call : 'ciao'}}, fakeCrawler )).to.throw('MISSING PARAMETER')
+      it 'should throw error when source is missing baseUrl and general pattern' , ->
+        expect(  -> sourceController.tryConfiguration({id: 'ciao'}, () -> undefined ) ).to.throw('MISSING PARAMETER')
+
+      it 'should run the crawler for the given source, and return the set of calls retrieved and no error', (done) ->
+        source = 
+          baseUrl : 'www.unitn.it'
+          pattern : 
+            call : 'pattern_call'
+            title  : 'pattern_title'
+
+        fakeCalls = [
+          {title : 'Call Title'},{}
+        ]
+
+        spycrawler = sinon.stub sourceController , '_getCrawler', () ->
+          return {
+            testSource : (source, cb)  ->
+              if source.baseUrl is 'www.unitn.it'
+                return cb undefined, fakeCalls
+              else
+                return cb 'error', undefined
+          }
+
+        sourceController.tryConfiguration source, (error, calls) ->
+          expect(error).to.be.undefined
+          expect(calls).to.be.not.undefined
+          expect(calls.length).to.be.eql(2)
+
+          # check first call
+          call1 = calls[0]
+          expect(call1.title).to.be.eql('Call Title')
+          done()
+
+
 
 
 
