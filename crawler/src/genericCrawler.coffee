@@ -33,18 +33,22 @@ class GenericCrawler
 		cw.initialPath = cw.path
 		cw.maxDepth = options.maxDepth || 4
 		cw.initialProtocol = options.initialProtocol || protocol || 'http'
-		cw.maxConcurrency = options.maxConcurrency || 1
+		cw.maxConcurrency = options.maxConcurrency || 2
 		cw.userAgent = 'Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0)'
+
+		pagesFetching = []
 
 		# add condition for urls to be followed and fetched
 		cw.addFetchCondition (url) ->
-			res = (url.path.match isUrlToFetchRegex) isnt null
-			if res
-				console.log url.path
-			return res
+			cond1 = (url.path.match isUrlToFetchRegex) isnt null
+			# avoid cycles
+			cond2 = url.path not in pagesFetching
+			if (cond2)
+				pagesFetching.push url.path
+			cond1 and cond2
 
 		cw.on 'fetchcomplete', (queueItem, responseBuffer, response) =>
-			console.log 'gott url ' + queueItem.url
+			console.log 'Fetched ' + queueItem.url
 			{path} = urlparse.parse queueItem.url
 			# save page content only if it satisfies a certain condition
 			if path.match isUrlToSaveRegex
@@ -64,22 +68,27 @@ class GenericCrawler
 	runs the crawler for the given source giving the first round of test results, does not store anything in the system
 	###
 	testSource: (source, done) =>
-
+		console.log 'testing source'
+		console.log source
 		@retrieveContent source.baseUrl, source.fetchRegex, source.saveRegex, source.options, (error, pageResults) =>
 			fns = []
 
 			requestExtract = (page) ->
+				body = 
+					page : page
+					patterns : source.pattern
+					baseUrl : source.baseUrl
 				(cb) =>
 					postOptions = 
-						body : page
+						body : JSON.stringify body
 						headers: {"Content-Type" : "application/json"}
-						url : 'calls/extract'
+						url : 'http://localhost:5000/calls/extract'
 					request.post postOptions, (err, response, data) =>
-						cb err, data
-
+						if (typeof data) is 'string'
+							data = JSON.parse data
+						cb (err || undefined) , data
 			for url, page of pageResults
 				fns.push requestExtract(page)
-
 			async.parallel fns, done
 
 module.exports = GenericCrawler;

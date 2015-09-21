@@ -2,6 +2,7 @@ mongoose = require 'mongoose'
 async = require 'async'
 config = require '../config'
 Source = (require './models/source.schema.js').Source
+ObjectId = mongoose.Types.ObjectId;
 
 genericCrawlerClass = require './genericCrawler.js'
 
@@ -113,8 +114,14 @@ class SourceController
 		Source.findOne {baseUrl : url}, (err, res) =>
 			return done (res || undefined) 
 
+	readById : (id, done) ->
+		if !id or !done
+			throw new Error 'MISSING PARAMETER'
+		Source.findById new ObjectId(id), (err, res) =>
+			console.log err
+			return done (res || undefined) 
+
 	readAll : (done) ->
-		console.log 'read all'
 		Source.find {} , (err, data) =>
 			done err, data
 
@@ -128,7 +135,6 @@ class SourceController
 
 		crawler = @_getCrawler()
 		crawler.testSource source, (errors, calls) ->
-			console.log 'returned'
 			console.log errors
 			console.log calls
 			done errors, calls
