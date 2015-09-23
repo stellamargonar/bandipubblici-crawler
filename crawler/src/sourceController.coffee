@@ -105,8 +105,8 @@ class SourceController
 	readByName : (name, done) ->
 		if !name or !done
 			throw new Error 'MISSING PARAMETER'
-		Source.findOne {name : name}, (err, res) =>
-			return done (res || undefined) 
+		Source.find {name : name}, (err, res) =>
+			return done (res[0] || undefined) 
 
 	readByUrl : (url, done) ->
 		if !url or !done

@@ -6,6 +6,8 @@ async = require 'async'
 momentjs = require 'moment'
 urlparse = require 'url'
 
+amqp = require 'amqp'
+config = require '../config'
 
 
 
@@ -13,7 +15,36 @@ class ExtractLoad
 
 	constructor : ->
 		# mongoose.connect ('mongodb://' + config.database.host + '/' + config.database.dbName)
+		@_amqp_connection = amqp.createConnection config.amqp.config
+		@_amqp_connection.on 'ready' , () =>
+			# subscribe to extrator queue
+			@_amqp_connection.queue config.amqp.queue.extractor , (extractor_queue) =>
+				extractor_queue.subscribe (message) =>
+					# process message
+					source = message.source
+					page = message.page
+					# retrieve content
+					@extractCallFromPage page, source.pattern, message.url, (call) =>
+						console.log 'EXTRACTOR : Completed extracting call from page ' + message.url
+						if call
+							@loadCall call, (errors, results) =>
+								console.error errors if errors
+						# if source.test
+						# 	@_amqp_connection.queue config.amqp.queue.test , (queue) =>
+						# 		console.log 'EXTRACTOR : send test call'
+						# 		@_amqp_connection.publish config.amqp.queue.test, call 
+						# @_amqp_connection.queue config.amqp.queue.saveCall , (queue) =>
+						# 	@_amqp_connection.publish config.amqp.queue.saveCall, call 
 
+
+			# # subscribe to save call queue
+			# @_amqp_connection.queue config.amqp.queue.saveCall , (save_queue) =>
+			# 	save_queue.subscribe (message) =>
+			# 		# process message , is a call
+			# 		call = message
+			# 		# retrieve content
+			# 		@loadCall call, (error, result) =>
+			# 			console.error error if error
 
 
 	###
@@ -43,7 +74,7 @@ class ExtractLoad
 		for property, pattern of patterns
 			if property is 'call'
 				continue
-			if (pattern.slice(-2) is ' a') or (pattern.indexOf('a[') isnt -1)
+			if (pattern.slice(-2) is ' a') or (pattern.indexOf('a[') isnt -1) or (pattern.indexOf('a:') isnt -1) or (pattern.indexOf('>a') isnt -1)
 				call[property] = dom(pattern, context).attr('href')
 			else
 				if pattern.match '^\".+\"$'
@@ -52,21 +83,33 @@ class ExtractLoad
 					call[property] = dom(pattern, context).text()
 		if !call.title
 			return done undefined
-
 		return done (@_clean call, sourceUrl)
 
 	_clean : (call, sourceUrl) ->
+		# convert date
 		if call.expiration
 			call.expiration = momentjs call.expiration, ["DD MMMM, YYYY", "DD/MM/YY" ], 'it'  
 			if call.expiration <= (new Date())
 				return undefined
 
-
+		# fix url
 		if call.url
 			parsedUrl  = urlparse.parse call.url 
 			if !parsedUrl.host # something is missing in the url.. 
 				sourceParsedUrl = urlparse.parse sourceUrl
-				call.url = sourceParsedUrl.host + parsedUrl.path
+				call.url = sourceParsedUrl.protocol + '//' + sourceParsedUrl.host + parsedUrl.path
+
+		# assign category
+		if !call.type
+			if 'amministra' in call.title.toLowerCase()
+				call.type = 'amministrazione'
+			else if 'didattica' in call.title.toLowerCase()
+				call.type = 'didattica' 
+			else if 'universit' in call.institution.toLowerCase()
+				call.type = 'ricerca'
+
+
+
 		return call
 
 	###
@@ -79,7 +122,7 @@ class ExtractLoad
 		# check if call is already in the database
 		checkDuplicate = (call) =>
 			(cb) =>
-				Call.find {url: call.url}, cb
+				Call.find {$or: [{url: call.url}, {title: call.title}]}, cb
 
 
 		# otherwise clean & save it
