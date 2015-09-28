@@ -9,139 +9,151 @@ urlparse = require 'url'
 amqp = require 'amqp'
 config = require '../config'
 
-
-
 class ExtractLoad
 
-	constructor : ->
-		# mongoose.connect ('mongodb://' + config.database.host + '/' + config.database.dbName)
-		@_amqp_connection = amqp.createConnection config.amqp.config
-		@_amqp_connection.on 'ready' , () =>
-			# subscribe to extrator queue
-			@_amqp_connection.queue config.amqp.queue.extractor , (extractor_queue) =>
-				extractor_queue.subscribe (message) =>
-					# process message
-					source = message.source
-					page = message.page
-					# retrieve content
-					@extractCallFromPage page, source.pattern, message.url, (call) =>
-						console.log 'EXTRACTOR : Completed extracting call from page ' + message.url
-						if call
-							@loadCall call, (errors, results) =>
-								console.error errors if errors
-						# if source.test
-						# 	@_amqp_connection.queue config.amqp.queue.test , (queue) =>
-						# 		console.log 'EXTRACTOR : send test call'
-						# 		@_amqp_connection.publish config.amqp.queue.test, call 
-						# @_amqp_connection.queue config.amqp.queue.saveCall , (queue) =>
-						# 	@_amqp_connection.publish config.amqp.queue.saveCall, call 
+  constructor: ->
+    @_amqp_connection = amqp.createConnection config.amqp.config
+    @_amqp_connection.on 'ready', () =>
+      # subscribe to extrator queue
+      @_amqp_connection.queue config.amqp.queue.extractor, (extractor_queue) =>
+        extractor_queue.subscribe (message) =>
+          # process message
+          source = message.source
+          page = message.page
+          # retrieve content
+          @extractCallFromPage page, source.pattern, message.url, (calls) =>
+#            console.log 'EXTRACTOR : Completed extracting call (' + calls.length + ') from page ' + message.url
+            console.error 'Cannot extract call' if !calls
+            return if !calls
+
+            fns = []
+            (fns.push (@loadCall call)) for call in calls
+            async.series fns, (errors) ->
+              console.error errors if errors
+  ###
+  given an html page, extracts the call present in the page
+  accordinlgy to a specific pattern
+  @param page
+  @param callback
+  ###
+
+  extractCallFromPage: (page, patterns, provenanceUrl, done) ->
+    if !page
+      throw new Error 'MISSING_PARAMETER page'
+    if !patterns or !patterns.call or !patterns.title
+      throw new Error 'MISSING_PARAMETER patterns call and title'
+    if !done
+      throw new Error 'MISSING_PARAMETER callback'
+
+    if typeof page isnt 'string'
+      throw new TypeError 'INVALID PARAMETER page content ' + page
+    if typeof done isnt 'function'
+      throw new TypeError 'INVALID PARAMETER callback'
+
+    dom = cheerio.load page
+    context = patterns.call
+
+    calls = []
+    call = {}
+
+    for property, pattern of patterns
+      if property is 'call'
+        continue
+      values = []
+
+      processMultiCall = (map, arg = undefined) =>
+        domTag = dom(pattern, context)
+        domTag.each (i, elem) =>
+          values.push dom(elem)[map](arg)
+
+        calls = @_arrayMap calls, values, property
+
+      # pattern contains link
+      if (pattern.slice(-2) is ' a') or (pattern.indexOf('a[') isnt -1) or (pattern.indexOf('a:') isnt -1) or (pattern.indexOf('>a') isnt -1)
+        processMultiCall 'attr', 'href'
+      # pattern is exact value
+      else if pattern.match '^\".+\"$'
+        (values.push (pattern.replace /\"/g, ''))  for i in [0...(calls.length)]
+        calls = @_arrayMap calls, values, property
+      # normal case
+      else
+        processMultiCall 'text'
+    if calls.length is 0
+      return done undefined
+
+    return done (@_clean calls, provenanceUrl)
+
+  _arrayMap: (callArray, valueArray, property) ->
+    if !valueArray or !property
+      return callArray
+
+    if callArray and callArray.length and callArray.length isnt valueArray.length
+      return callArray
+
+    for i in [0...(valueArray.length)] by 1
+      callArray[i] = {} if !callArray[i]
+      callArray[i][property] = valueArray[i]
+    return callArray
 
 
-			# # subscribe to save call queue
-			# @_amqp_connection.queue config.amqp.queue.saveCall , (save_queue) =>
-			# 	save_queue.subscribe (message) =>
-			# 		# process message , is a call
-			# 		call = message
-			# 		# retrieve content
-			# 		@loadCall call, (error, result) =>
-			# 			console.error error if error
+  _clean: (calls, provenanceUrl) ->
+    for i in [0...calls.length] by 1
+      calls[i].provenance = provenanceUrl
+      if !calls[i].title
+        console.log 'EXTRACTOR : Missing title for call ' + provenanceUrl
+        calls.splice(i, 1)
 
+    for call in calls
 
-	###
-	given an html page, extracts the call present in the page 
-	accordinlgy to a specific pattern
-	@param page
-	@param callback
-	###
-	extractCallFromPage : (page, patterns, sourceUrl, done) ->
-		if !page
-			throw new Error 'MISSING_PARAMETER page'
-		if !patterns or !patterns.call or !patterns.title
-			throw new Error 'MISSING_PARAMETER patterns call and title'
-		if !done
-			throw new Error 'MISSING_PARAMETER callback'
+# convert date
+      if call.expiration
+        call.expiration = momentjs call.expiration, ["DD MMMM, YYYY", "DD/MM/YYYY"], 'it'
+        if call.expiration <= (new Date())
+          return undefined
 
-		if typeof page isnt 'string'
-			throw new TypeError 'INVALID PARAMETER page content ' + page
-		if typeof done isnt 'function'
-			throw new TypeError 'INVALID PARAMETER callback'
+      # fix url
+      if call.url
+        parsedUrl = urlparse.parse call.url
+        if !parsedUrl.host # something is missing in the url..
+          sourceParsedUrl = urlparse.parse provenanceUrl
+          call.url = sourceParsedUrl.protocol + '//' + sourceParsedUrl.host + parsedUrl.path
 
-		dom = cheerio.load page
-		context = patterns.call
+      # assign category
+      if !call.type
+        if 'amministra' in call.title.toLowerCase()
+          call.type = 'amministrazione'
+        else if 'didattica' in call.title.toLowerCase()
+          call.type = 'didattica'
+        else if (call.institution) and ('universit' in call.institution.toLowerCase())
+          call.type = 'ricerca'
 
-		call = {}
+    return calls
 
-		for property, pattern of patterns
-			if property is 'call'
-				continue
-			if (pattern.slice(-2) is ' a') or (pattern.indexOf('a[') isnt -1) or (pattern.indexOf('a:') isnt -1) or (pattern.indexOf('>a') isnt -1)
-				call[property] = dom(pattern, context).attr('href')
-			else
-				if pattern.match '^\".+\"$'
-					call[property] = pattern.replace /\"/g, ''
-				else
-					call[property] = dom(pattern, context).text()
-		if !call.title
-			return done undefined
-		return done (@_clean call, sourceUrl)
+  ###
+  add a call to the database, checking if the call is already stored
+  ###
+  loadCall: (call) ->
+    (done) =>
+      if !call
+        return done undefined, undefined
 
-	_clean : (call, sourceUrl) ->
-		# convert date
-		if call.expiration
-			call.expiration = momentjs call.expiration, ["DD MMMM, YYYY", "DD/MM/YY" ], 'it'  
-			if call.expiration <= (new Date())
-				return undefined
+      async.waterfall [
+        # check if call is already in the database
+        (next) =>
+          Call.find {$or: [{url: call.url}, {title: call.title}]}, next
+        ,
+        (duplicates, done) =>
+          if duplicates and duplicates.length > 0
+#            console.log 'SAVE : found duplicate for call' + call.title + ' ' + call.provenance
+            Call.update {_id: duplicates[0]._id}, call, {upsert: true}, (err) ->
+              return done (err || undefined), call
+          else
+#            console.log 'SAVE : new call ' + call.title
+            newCall = new Call call
+            newCall.save (err, result) =>
+              return done (err || undefined), result
 
-		# fix url
-		if call.url
-			parsedUrl  = urlparse.parse call.url 
-			if !parsedUrl.host # something is missing in the url.. 
-				sourceParsedUrl = urlparse.parse sourceUrl
-				call.url = sourceParsedUrl.protocol + '//' + sourceParsedUrl.host + parsedUrl.path
-
-		# assign category
-		if !call.type
-			if 'amministra' in call.title.toLowerCase()
-				call.type = 'amministrazione'
-			else if 'didattica' in call.title.toLowerCase()
-				call.type = 'didattica' 
-			else if 'universit' in call.institution.toLowerCase()
-				call.type = 'ricerca'
-
-
-
-		return call
-
-	###
-	add a call to the database, checking if the call is already stored
-	###
-	loadCall : (call, done) ->
-		if !call
-			done undefined, undefined 
-
-		# check if call is already in the database
-		checkDuplicate = (call) =>
-			(cb) =>
-				Call.find {$or: [{url: call.url}, {title: call.title}]}, cb
-
-
-		# otherwise clean & save it
-		saveCall = (call) =>
-			(duplicates, cb) =>
-				# if any duplicates
-				if duplicates and duplicates.length > 0
-					Call.update {_id: duplicates[0]._id }, call, {upsert: true}, (err) ->
-						return cb (err || undefined) , call
-				else
-					console.log 'No duplicate, create ' + call.title
-					newCall = new Call call
-					newCall.save (err, result) =>
-						return cb (err || undefined), result
-		async.waterfall [(checkDuplicate call), (saveCall call)], done
-
-
-
-
+      ], done
 
 
 module.exports = ExtractLoad;

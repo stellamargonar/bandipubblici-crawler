@@ -10,6 +10,7 @@ SourceSchema = new Schema
 	protocol : String
 	fetchRegex : String
 	saveRegex : String
+	customCrawler : String
 
 Source = mongoose.model 'Source', SourceSchema
 module.exports = 
