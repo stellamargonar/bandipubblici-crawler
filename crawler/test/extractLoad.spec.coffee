@@ -156,26 +156,6 @@ describe 'extractLoad', ->
           expect(result[1].title).to.be.eql('Title2')
           done()
 
-      it 'should parse also html as result of json queries', () ->
-        html = '{"aaData": [["<div><div style=\'padding-bottom:5px;border-bottom: 1px dotted #aaa;\'><a href=\'http://www.albotelematico.tn.it/atto-pubb/201560413\'><b>BANDO PER LA COPERTURA DEL POSTO A TEMPO PIENO DI \'FUNZIONARIO ESPERTO IN MATERIA CONTABILE E DI FINANZA PUBBLICA\' - CATEGORIA D), LIVELLO EVOLUTO - ATTRAVERSO MOBILIT&Agrave; VOLONTARIA AI SENSI DELL\'ART. 73 DEL CONTRATTO COLLETTIVO PROVINCIALE DI LAVORO 20.10.2003 DEL PERSONALE DEL COMPARTO AUTONOMIE LOCALI, AREA NON DIRIGENZIALE.</b></a></div><div style=\'font-style:italic;margin-top:5px;\'><b>Periodo:</b> pubblicato il giorno <b>22/09/2015</b> e consultabile fino a tutto il: <b>06/11/2015</b></div><div>Atto pubblicato da <b>Comune di Daiano</b>.<br/></div><div style=\'margin-top:5px;\'><a download target=\'_blank\' href=\'http://www.albotelematico.tn.it/ftp/2015/22070/60413.pdf\' target=\'_blank\'><img src=\'http://www.albotelematico.tn.it/_site/_img/ico/pdf.jpg\' class=\'img_no_border\' alt=\'Scarica atto numero 60413 - 22070\' title=\'Scarica atto numero 60413 - 22070\' /> Scarica atto</a></div></div>","<div class=\'hidden-766-action\' style=\'text-align:center;\'>21/09/2015</div>",'+
-        '"<a href=\'http://www.albotelematico.tn.it/bacheca/tutti/concorsi\'>Concorsi</a>","<div style=\'text-align:center;\'><div style=\'margin-top:5px;\'><a download target=\'_blank\' href=\'http://www.albotelematico.tn.it/ftp/2015/22070/60413.pdf\' target=\'_blank\'><img src=\'http://www.albotelematico.tn.it/_site/_img/ico/pdf.jpg\' class=\'img_no_border\' alt=\'Scarica atto numero 60413 - 22070\' title=\'Scarica atto numero 60413 - 22070\' /> Scarica atto</a></div></div>"],' +
-          '["<div><div><a href=\'http://www.albotelematico.tn.it/atto-pubb/201560412\'><b>BANDO PER LA COPERTURA DEL POSTO A TEMPO PIENO DI \'FUNZIONARIO ESPERTO IN MATERIA CONTABILE E DI FINANZA PUBBLICA\' CAT. D), LIV: EVOLUTO - ATTRAVERSO MOLIBILITA\' VOLONTARIA</b></a></div><div><b>Periodo:</b> pubblicato il giorno <b>22/09/2015</b> e consultabile fino a tutto il: <b>06/11/2015</b></div><div>Atto pubblicato da <b>Comune di Cimone</b> per conto di: </span> <span><b>Comune di Cavalese</b>.<br/></div><div><a download href=\'http://www.albotelematico.tn.it/ftp/2015/22058/60412.pdf\' ><img src=\'http://www.albotelematico.tn.it/_site/_img/ico/pdf.jpg\' class=\'img_no_border\' alt=\'Scarica atto numero 60412 - 22058\' title=\'Scarica atto numero 60412 - 22058\' /> Scarica atto</a></div></div>"]]}'
-        patterns = 
-          call : 'div'
-          title : 'div a b'
-          expiration:   'div b:nth-child(3)'
-          url : 'div:last-child a'
-          institution : 'div>span>b'
-
-        extractLoad.extractCallFromPage html, patterns, '' , (calls) =>
-          expect(calls).to.be.not.undefined
-          expect(calls.length).to.be.eql(2)
-          call = calls[0]
-          expect(call).to.have.property('title')
-          expect(call).to.have.property('url')
-          expect(call).to.have.property('expiration')
-
-          
           
     describe '_arrayMap', ->
       it 'should return first array when second array is undefined', () ->

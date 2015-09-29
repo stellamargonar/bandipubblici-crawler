@@ -4,6 +4,12 @@ module.exports = {
 		"host" : "localhost",
 		"dbName" : "bandipubblici_test"
 	},
+	"mysqlDatabase" : {
+		"host" : "localhost",
+		"database" : "bandipubblici_test",
+		"user" : "root",
+		"password": "root"
+ 	},
 	"amqp" :{
 		"config" : {
 			"host" : "localhost",
