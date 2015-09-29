@@ -37,7 +37,17 @@ class NameIndex
     retrieves the value (without status) corresponding to the given key
     ###
     get : (key, done) ->
+      if !key or !done
+        throw new Error 'Missing Parameter'
+      if (typeof done) isnt 'function'
+        throw new Error 'Invalid Callback'
 
+      getQuery = 'SELECT valid_name FROM name_index WHERE name=' + @connection.escape(key)
+      @connection.query getQuery, (err, rows) ->
+        if err or !rows or !rows[0]
+          done undefined
+        else
+          done rows[0].valid_name
 
     ###
     retrieves all the values that are similar (based on the data storage fuzzy string algorithm) to the string in input
@@ -50,6 +60,7 @@ class NameIndex
     ###
     update : (key, value, done) ->
 
+
     ###
     updates with the new value all the entries that had the old value
     Modifies the status to true (= validated)
@@ -60,6 +71,14 @@ class NameIndex
     returns all the records that haven't yet been validated by the user
     ###
     getUnvalidated : (done) ->
+      if !done
+        throw new Error 'Missing Parameter'
+      if (typeof done) isnt 'function'
+        throw new Error 'Invalid Callback'
+
+      unvalidQuery = 'SELECT name, valid_name FROM name_index WHERE validated=false'
+      @connection.query unvalidQuery , (err, rows) ->
+        done rows
 
 
 
