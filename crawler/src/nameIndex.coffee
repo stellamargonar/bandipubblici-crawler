@@ -52,7 +52,24 @@ class NameIndex
     ###
     retrieves all the values that are similar (based on the data storage fuzzy string algorithm) to the string in input
     ###
+    # select valid_name, levenshtein(valid_name,'uni di trento')/13 as lev from name_index where levenshtein(valid_name, 'uni di trento')/13 < 1 order by lev;
     find : (key, done) ->
+      if !key or !done
+        throw new Error 'Missing Parameter'
+      if (typeof done) isnt 'function'
+        throw new Error 'Invalid Callback'
+
+      keyLength = key.length
+      innerQuery = 'SELECT valid_name,levenshtein(valid_name, ' + @connection.escape(key) + ')/' + keyLength + ' as lev ' +
+        ' FROM name_index ' +
+        ' WHERE levenshtein(valid_name, ' + @connection.escape(key) + ')/' + keyLength + ' < 1 ' +
+        ' ORDER BY lev ASC'
+      findMatchQuery = 'SELECT distinct(v.valid_name) from (' + innerQuery + ') as v limit 5'
+      @connection.query findMatchQuery , (err, rows) ->
+        distinctNames = {}
+        for row in rows
+          distinctNames[row.valid_name] = 1
+        done Object.keys(distinctNames)
 
     ###
     updates the entry corresponding to the given key with the given value.

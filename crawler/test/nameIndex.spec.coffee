@@ -95,3 +95,67 @@ describe 'NameIndex', ->
             expect(results.length).to.be.eql 1
             expect(results[0]).to.be.eql({name : 'prova2', valid_name: 'test2'})
             done()
+
+  describe 'find' , ->
+    connection = undefined
+
+    beforeEach (done) ->
+      conf = config.mysqlDatabase
+      conf.multipleStatements= true
+      connection = mysql.createConnection conf
+      connection.connect () ->
+        done()
+    afterEach (done) ->
+      connection.end () ->
+        done()
+
+    it 'should throw error when key is missing', ->
+      expect( -> nameIndex.find() ).to.throw('Missing Parameter')
+
+    it 'should throw error when callback is missing', ->
+      expect( -> nameIndex.find('ciao') ).to.throw('Missing Parameter')
+    it 'should throw error when callback is not a function', ->
+      expect( -> nameIndex.find('ciao', []) ).to.throw('Invalid Callback')
+
+    it 'should return empty array when there are no record in index', (done) ->
+      nameIndex.find 'key', (results) ->
+        expect(results).to.be.not.undefined
+        expect(results).to.be.empty
+        done()
+
+    it 'should return empty array when there are no similar (valid) names in index', (done) ->
+      insertQuery = 'INSERT INTO name_index (name, valid_name, validated) VALUES (\'prova\', \'test\', true) ; INSERT INTO name_index (name, valid_name, validated) VALUES (\'prova2\', \'test2\', false);'
+      connection.query insertQuery, (err)->
+        nameIndex.find 'key', (results) ->
+          expect(results).to.be.not.undefined
+          expect(results).to.be.empty
+          done()
+
+    it 'should return array containing the valid name if already in index', (done) ->
+      insertQuery = 'INSERT INTO name_index (name, valid_name, validated) VALUES (\'prova\', \'test\', true) ; INSERT INTO name_index (name, valid_name, validated) VALUES (\'prova2\', \'test2\', false);'
+      connection.query insertQuery, (err)->
+        nameIndex.find 'test', (results) ->
+          expect(results).to.be.not.undefined
+          expect(results).to.be.not.empty
+          expect(results[0]).to.be.eql('test')
+          done()
+
+    it 'should return array containing the valid name if already in index but in different (lower/upper/mixed) case', (done) ->
+      insertQuery = 'INSERT INTO name_index (name, valid_name, validated) VALUES (\'prova\', \'test\', true) ; INSERT INTO name_index (name, valid_name, validated) VALUES (\'prova2\', \'test2\', false);'
+      connection.query insertQuery, (err)->
+
+        nameIndex.find 'TEST', (results) ->
+          expect(results).to.be.not.undefined
+          expect(results).to.be.not.empty
+          expect(results[0]).to.be.eql('test')
+          done()
+
+    it 'should return array containing the valid name if the key differs of few letters with the valid name', (done) ->
+      insertQuery = 'INSERT INTO name_index (name, valid_name, validated) VALUES (\'prova\', \'test\', true) ; INSERT INTO name_index (name, valid_name, validated) VALUES (\'prova2\', \'test2\', false);'
+      connection.query insertQuery, (err)->
+
+        nameIndex.find 'TESTA', (results) ->
+          expect(results).to.be.not.undefined
+          expect(results).to.be.not.empty
+          expect(results[0]).to.be.eql('test')
+          done()
