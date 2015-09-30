@@ -3,6 +3,7 @@ sourceControllerClass = require './sourceController.js'
 extractLoadClass = require './extractLoad.js'
 Call = (require './models/call.schema.js').Call
 crawlerClass = require './genericCrawler.js'
+nameIndexClass = require './nameIndex.js'
 async = require 'async'
 amqp = require 'amqp'
 config = require '../config'
@@ -11,6 +12,7 @@ class WebWrapper
     
     SOURCE_PATH = 'sources'
     CALL_PATH = 'calls'
+    CLEAN_PATH = 'clean'
     ERROR_STATUS = 400
     SUCCESS_STATUS = 200
 
@@ -21,6 +23,7 @@ class WebWrapper
             @_sourceController = new sourceControllerClass()
             @_extractLoader = new extractLoadClass()
             @_crawler = new crawlerClass()
+            @_nameIndex = new nameIndexClass()
 
             server.get '/' + SOURCE_PATH , (req, res) =>
                 console.log req.query
@@ -94,19 +97,6 @@ class WebWrapper
                 catch catch_error
                     console.error catch_error
                     return res.status(ERROR_STATUS).send({message: catch_error})
-                
-
-#            server.post '/' + CALL_PATH + '/extract' , (req, res) =>
-#                body = req.body
-#                if (typeof body) is 'string'
-#                    body = JSON.parse body
-#                try
-#                    # todo convert to message
-#                    # @_extractLoader.extractCallFromPage body.page, body.patterns, body.baseUrl ,  (call) =>
-#                    #     return res.status(SUCCESS_STATUS).json(call)
-#                catch error
-#                    console.log error
-#                    res.status(ERROR_STATUS).send({message: error})
 
             server.get '/' + CALL_PATH + '/', (req, res) =>
                 Call.find {}, (err, data) =>
@@ -114,7 +104,37 @@ class WebWrapper
                     return res.status(SUCCESS_STATUS).send(data)
 
 
+            server.get '/' + CLEAN_PATH + '/unvalidated', (req, res) =>
+                try
+                    @_nameIndex.getUnvalidated (data) =>
+                        return res.status(SUCCESS_STATUS).send(data)   if data
+                        return res.status(ERROR_STATUS).send([])
+                catch catch_error
+                    console.error catch_error
 
+            server.get '/' + CLEAN_PATH + '/init', (req, res) =>
+                try
+                    @_nameIndex.init (err, results) =>
+                        return res.status(SUCCESS_STATUS).send('Done')
+                catch catch_error
+                    console.error catch_error
+            server.get '/' + CLEAN_PATH + '/find', (req, res) =>
+                if !req.query.name
+                    return res.status(ERROR_STATUS).send('Missing parameter name')
+                try
+                    @_nameIndex.find req.query.name, (candidates) =>
+                        return res.status(SUCCESS_STATUS).send(candidates) if candidates
+                        return res.status(ERROR_STATUS).send([])
+                catch catch_error
+                    console.error catch_error
+
+            server.post '/' + CLEAN_PATH + '/update' , (req, res) =>
+                console.log 'POST clean/update'
+                if ! req.body or !req.body.name or !req.body.valid_name
+                    return res.status(ERROR_STATUS).send('Missing properties in payload')
+                @_nameIndex.update req.body.name, req.body.valid_name, (err) =>
+                    return res.status(ERROR_STATUS).send(err) if err
+                    return res.status(SUCCESS_STATUS).send()
     _crawlSingleSource : (source) ->
         (cb) =>
             @_connection.queue config.amqp.queue.crawler , (queue) =>

@@ -2,6 +2,7 @@
 pg = require 'pg'
 config = require '../config'
 mongoose = require 'mongoose'
+async = require 'async'
 Call = (require './models/call.schema.js').Call
 
 
@@ -16,8 +17,8 @@ class NameIndex
 
         # create schema if not done yet
         createTable = 'CREATE TABLE IF NOT EXISTS name_index ( ' +
-           'name       VARCHAR(100) PRIMARY KEY, ' +
-           'valid_name VARCHAR(100), ' +
+           'name       text PRIMARY KEY, ' +
+           'valid_name text, ' +
            'validated  BOOLEAN ' +
            ')'
 
@@ -157,6 +158,14 @@ class NameIndex
         done res.rows
 
 
-
+    init : (done) ->
+      Call.find {}, (err, data) =>
+        distinctNames = {}
+        (distinctNames[call.institution] = 1 if call.institution and !distinctNames[call.institution]) for call in data
+        fns = []
+        insert = (name) =>
+          (cb) => @insert name, name, cb
+        (fns.push (insert name) ) for name of distinctNames
+        async.series fns, done
 
 module.exports = NameIndex

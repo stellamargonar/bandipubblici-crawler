@@ -10,6 +10,7 @@ module.exports = {
 		"user" : "root",
 		"password": "root"
 	},
+	"psDatabase": "postgres://crawler:crawler@localhost/bandipubblici_dev",
 	"amqp" :{
 		"config" : {
 			"host" : "localhost",
