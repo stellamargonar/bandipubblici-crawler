@@ -17,7 +17,7 @@ describe 'sourceController', ->
     sourceController = null
 
     before (done) ->
-      # mongoose.connect ('mongodb://' + config.database.host + '/' + config.database.dbName), done
+      mongoose.connect ('mongodb://' + config.database.host + '/' + config.database.dbName)
       sourceController = new sourceControllerClass()
       done()
  

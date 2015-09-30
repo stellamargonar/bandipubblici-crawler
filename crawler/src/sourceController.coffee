@@ -11,7 +11,7 @@ class SourceController
 	# Source = mongoose.model 'Source'
 
 	constructor : () ->
-		mongoose.connect ('mongodb://' + config.database.host + '/' + config.database.dbName)
+#		mongoose.connect ('mongodb://' + config.database.host + '/' + config.database.dbName)
 
 	###
 	stores in the database the new source / or update if already existing

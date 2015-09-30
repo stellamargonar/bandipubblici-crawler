@@ -4,6 +4,7 @@ pg = require 'pg'
 # get config for testing environment
 process.env.NODE_ENV = 'testing'
 config = require '../config'
+mongoose = require 'mongoose'
 
 # nock = require 'nock'
 # using compiled JavaScript file here to be sure module works
@@ -11,6 +12,8 @@ nameIndexClass = require '../lib/nameIndex.js'
 
 expect = chai.expect
 chai.use require 'sinon-chai'
+
+Call = (require '../lib/models/call.schema.js').Call
 
 describe 'NameIndex', ->
   nameIndex = null
@@ -99,11 +102,6 @@ describe 'NameIndex', ->
   describe 'find' , ->
     connection = undefined
 
-    beforeEach (done) ->
-      pg.connect config.psDatabase , (err, client ) ->
-        connection = client
-        done()
-
     it 'should throw error when key is missing', ->
       expect( -> nameIndex.find() ).to.throw('Missing Parameter')
 
@@ -120,11 +118,13 @@ describe 'NameIndex', ->
 
     it 'should return empty array when there are no similar (valid) names in index', (done) ->
       insertQuery = 'INSERT INTO name_index (name, valid_name, validated) VALUES (\'prova\', \'test\', true) ; INSERT INTO name_index (name, valid_name, validated) VALUES (\'prova2\', \'test2\', false);'
-      connection.query insertQuery, (err)->
-        nameIndex.find 'key', (results) ->
-          expect(results).to.be.not.undefined
-          expect(results).to.be.empty
-          done()
+      pg.connect config.psDatabase , (err, client ) ->
+        client.query insertQuery, (err)->
+          client.end()
+          nameIndex.find 'key', (results) ->
+            expect(results).to.be.not.undefined
+            expect(results).to.be.empty
+            done()
 
     it 'should return array containing the valid name if already in index', (done) ->
       insertQuery = 'INSERT INTO name_index (name, valid_name, validated) VALUES (\'prova\', \'test\', true) ; INSERT INTO name_index (name, valid_name, validated) VALUES (\'prova2\', \'test2\', false);'
@@ -158,3 +158,67 @@ describe 'NameIndex', ->
             expect(results).to.be.not.empty
             expect(results[0]).to.be.eql('test')
             done()
+
+
+  describe 'update' , ->
+
+
+    before (done) ->
+      mongoose.connect ('mongodb://' + config.database.host + '/' + config.database.dbName)
+      done()
+
+    after (done) ->
+      mongoose.connection.db.command { dropDatabase: 1 }, (err, result) ->
+        mongoose.connection.close done
+
+
+
+    beforeEach (done) ->
+      pg.connect config.psDatabase , (err, client) ->
+        client.query 'insert into name_index values (\'key\', \'old_name\',false)', ()->
+          client.end()
+          done()
+
+    afterEach (done) ->
+      pg.connect config.psDatabase , (err, client) ->
+        client.query 'delete from name_index', ()->
+          client.end()
+          done()
+
+    it 'should throw error when is missing key', ->
+      expect( -> nameIndex.update() ).to.throw('Missing Parameter')
+    it 'should throw error when is missing value', ->
+      expect( -> nameIndex.update('ciao') ).to.throw('Missing Parameter')
+    it 'should throw error when is missing callback', ->
+      expect( -> nameIndex.update('ciao', 'ciao') ).to.throw('Missing Parameter')
+    it 'should throw error when callback is not a function', ->
+      expect( -> nameIndex.update('ciao','ciao','ciao') ).to.throw('Invalid Callback')
+    it 'should return error when no entry exists with the given key' , (done) ->
+      nameIndex.update 'new key', 'ciao', (err) ->
+        expect(err).to.be.not.undefined
+        done()
+    it 'should modify the record with the given key modifying the valid_name and set validated = true', (done) ->
+      nameIndex.update 'key', 'new_name', (err) ->
+        expect(err).to.be.undefined
+        pg.connect config.psDatabase , (err, client) ->
+          client.query 'select * from name_index where name=\'key\'', (err, res) ->
+            client.end()
+            expect(res.rows[0]).to.be.eql {name: 'key', valid_name: 'new_name', validated: true}
+            done()
+
+    it 'should propagate edit to institution name also to mongoDB (if entry present in this db)', (done) ->
+#      this.timeout(10000)
+      #prepare mongo
+      call = new Call({title: 'TITOLO_test', institution: 'key'})
+      call.save () ->
+        nameIndex.update 'key', 'new_name', (err) ->
+
+          expect(err).to.be.undefined
+
+          # check mongo
+          Call.findOne {title: 'TITOLO_test'}, (err, res) ->
+            expect(res).to.be.not.undefined
+            expect(res.institution).to.be.eql 'new_name'
+            done()
+
+

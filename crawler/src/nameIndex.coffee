@@ -1,11 +1,16 @@
 #mysql = require 'mysql'
 pg = require 'pg'
 config = require '../config'
+mongoose = require 'mongoose'
+Call = (require './models/call.schema.js').Call
+
 
 class NameIndex
 
     constructor : () ->
       # establish connection
+      mongoose.createConnection
+
       pg.connect config.psDatabase , (err, client, done ) ->
         console.error ('NAME INDEX ERROR connecting to database: ' + err) if err
 
@@ -101,6 +106,23 @@ class NameIndex
     Modifies the status to true (= validated)
     ###
     update : (key, value, done) ->
+      if !key or !value or !done
+        throw new Error 'Missing Parameter'
+      if (typeof done) isnt 'function'
+        throw new Error 'Invalid Callback'
+
+      updateQuery =
+        text: 'UPDATE name_index SET valid_name = $1 , validated = true WHERE name = $2'
+        values : [value, key]
+      @_submitQuery updateQuery , (err, res) ->
+        if err or !res or !res.rowCount
+          done 'Error ' + err
+        else
+          # update monog institutions
+#          Call.find {institution:key}, (res) ->
+#            console.log res
+          Call.update {institution: key}, {institution: value}, (err) ->
+            done (err || undefined)
 
 
     ###
@@ -108,6 +130,8 @@ class NameIndex
     Modifies the status to true (= validated)
     ###
     updateAll : (valueOld, valueNe, done) ->
+
+
 
     ###
     returns all the records that haven't yet been validated by the user
