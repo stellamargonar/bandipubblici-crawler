@@ -162,7 +162,6 @@ describe 'NameIndex', ->
 
   describe 'update' , ->
 
-
     before (done) ->
       mongoose.connect ('mongodb://' + config.database.host + '/' + config.database.dbName)
       done()
@@ -170,8 +169,6 @@ describe 'NameIndex', ->
     after (done) ->
       mongoose.connection.db.command { dropDatabase: 1 }, (err, result) ->
         mongoose.connection.close done
-
-
 
     beforeEach (done) ->
       pg.connect config.psDatabase , (err, client) ->
@@ -207,7 +204,6 @@ describe 'NameIndex', ->
             done()
 
     it 'should propagate edit to institution name also to mongoDB (if entry present in this db)', (done) ->
-#      this.timeout(10000)
       #prepare mongo
       call = new Call({title: 'TITOLO_test', institution: 'key'})
       call.save () ->
@@ -222,3 +218,59 @@ describe 'NameIndex', ->
             done()
 
 
+  describe 'updateAll' , ->
+
+    before (done) ->
+      mongoose.connect ('mongodb://' + config.database.host + '/' + config.database.dbName)
+      done()
+
+    after (done) ->
+      mongoose.connection.db.command { dropDatabase: 1 }, (err, result) ->
+        mongoose.connection.close done
+
+    beforeEach (done) ->
+      pg.connect config.psDatabase , (err, client) ->
+        client.query 'insert into name_index values (\'name\', \'old_valid\',false)', ()->
+          client.end()
+          done()
+
+    afterEach (done) ->
+      pg.connect config.psDatabase , (err, client) ->
+        client.query 'delete from name_index', ()->
+          client.end()
+          done()
+
+    it 'should throw error when is missing old value', ->
+      expect( -> nameIndex.updateAll() ).to.throw('Missing Parameter')
+    it 'should throw error when is missing new value', ->
+      expect( -> nameIndex.updateAll('ciao') ).to.throw('Missing Parameter')
+    it 'should throw error when is missing callback', ->
+      expect( -> nameIndex.updateAll('ciao', 'ciao') ).to.throw('Missing Parameter')
+    it 'should throw error when callback is not a function', ->
+      expect( -> nameIndex.updateAll('ciao','ciao','ciao') ).to.throw('Invalid Callback')
+    it 'should return error when no entry exists with the given old value' , (done) ->
+      nameIndex.updateAll 'non_esiste', 'ciao', (err) ->
+        expect(err).to.be.not.undefined
+        done()
+
+    it 'should update all the records with valid_name=old to valid_name=true', (done) ->
+      nameIndex.updateAll 'old_valid', 'new_valid', (err) ->
+        expect(err).to.be.undefined
+
+        pg.connect config.psDatabase , (err, client) ->
+          client.query 'select * from name_index where valid_name=\'old_valid\'', (err, res) ->
+            expect(res.rows).to.be.empty
+            client.query 'select * from name_index where valid_name=\'new_valid\'', (err, res) ->
+              expect(res.rows).to.be.not.empty
+              done()
+
+    it 'should update the call with institution = old value with the new value', (done) ->
+      call = new Call {title: 'TITOLO_call', institution: 'old_valid'}
+      call.save () ->
+
+        nameIndex.updateAll 'old_valid', 'new_valid', (err) ->
+          expect(err).to.be.undefined
+          Call.find {title: 'TITOLO_call'}, (err, calls) ->
+            expect(calls).to.be.not.empty
+            expect(calls[0].institution).to.be.eql('new_valid')
+            done()

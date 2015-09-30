@@ -119,8 +119,6 @@ class NameIndex
           done 'Error ' + err
         else
           # update monog institutions
-#          Call.find {institution:key}, (res) ->
-#            console.log res
           Call.update {institution: key}, {institution: value}, (err) ->
             done (err || undefined)
 
@@ -129,9 +127,21 @@ class NameIndex
     updates with the new value all the entries that had the old value
     Modifies the status to true (= validated)
     ###
-    updateAll : (valueOld, valueNe, done) ->
+    updateAll : (valueOld, valueNew, done) ->
+      if !valueOld or !valueNew or !done
+        throw new Error 'Missing Parameter'
+      if (typeof done) isnt 'function'
+        throw new Error 'Invalid Callback'
 
+      updateQuery =
+        text : 'UPDATE name_index SET valid_name = $1, validated = true WHERE valid_name = $2'
+        values : [valueNew, valueOld]
+      @_submitQuery updateQuery , (err, res) ->
+        return done (err || 'Error')  if err or !res or !res.rowCount
 
+        # propagate to main db
+        Call.update {institution: valueOld}, {institution: valueNew}, (err) ->
+          done (err || undefined)
 
     ###
     returns all the records that haven't yet been validated by the user
