@@ -1,7 +1,6 @@
 chai = require 'chai'
 sinon = require 'sinon'
-mysql = require 'mysql'
-
+pg = require 'pg'
 # get config for testing environment
 process.env.NODE_ENV = 'testing'
 config = require '../config'
@@ -20,9 +19,9 @@ describe 'NameIndex', ->
     nameIndex = new nameIndexClass()
 
   afterEach (done) ->
-    connection = mysql.createConnection config.mysqlDatabase
-    connection.connect () ->
-      connection.query 'delete from name_index', ()->
+    pg.connect config.psDatabase , (err, client ) ->
+      client.query 'DELETE FROM name_index', (err, res) ->
+        client.end()
         done()
 
   describe 'insert', ->
@@ -36,13 +35,6 @@ describe 'NameIndex', ->
     it 'should return error when callback is not a function', ->
       expect( -> nameIndex.insert('ciao', 'ciao', []) ).to.throw('Invalid Callback')
 
-    it 'should return undefined when the data has been saved', (done)->
-      key = 'ciao'
-      value = 'value'
-      nameIndex.insert key, value, (error) ->
-        expect(error).to.be.undefined
-        done()
-
     it 'should return error when key already exists', (done)->
       key = 'ciao'
       value = 'value'
@@ -50,6 +42,16 @@ describe 'NameIndex', ->
         nameIndex.insert key, value, (error) ->
           expect(error).to.be.not.undefined
           done()
+
+
+    it 'should return undefined when the data has been saved', (done)->
+      key = 'ciao'
+      value = 'value'
+      nameIndex.insert key, value, (error) ->
+        expect(error).to.be.undefined
+        done()
+
+
 
   describe 'get', ->
     it 'should throw error when is missing key', ->
@@ -81,11 +83,9 @@ describe 'NameIndex', ->
         done()
 
     it 'should return only the records that are not validated', (done) ->
-      conf = config.mysqlDatabase
-      conf.multipleStatements= true
-      connection = mysql.createConnection conf
+      pg.connect config.psDatabase , (err, client ) ->
+        connection = client
 
-      connection.connect () ->
         insertQuery = 'INSERT INTO name_index (name, valid_name, validated) VALUES (\'prova\', \'test\', true) ; INSERT INTO name_index (name, valid_name, validated) VALUES (\'prova2\', \'test2\', false);'
         connection.query insertQuery, (err)->
           connection.end()
@@ -100,13 +100,8 @@ describe 'NameIndex', ->
     connection = undefined
 
     beforeEach (done) ->
-      conf = config.mysqlDatabase
-      conf.multipleStatements= true
-      connection = mysql.createConnection conf
-      connection.connect () ->
-        done()
-    afterEach (done) ->
-      connection.end () ->
+      pg.connect config.psDatabase , (err, client ) ->
+        connection = client
         done()
 
     it 'should throw error when key is missing', ->
@@ -133,29 +128,33 @@ describe 'NameIndex', ->
 
     it 'should return array containing the valid name if already in index', (done) ->
       insertQuery = 'INSERT INTO name_index (name, valid_name, validated) VALUES (\'prova\', \'test\', true) ; INSERT INTO name_index (name, valid_name, validated) VALUES (\'prova2\', \'test2\', false);'
-      connection.query insertQuery, (err)->
-        nameIndex.find 'test', (results) ->
-          expect(results).to.be.not.undefined
-          expect(results).to.be.not.empty
-          expect(results[0]).to.be.eql('test')
-          done()
+      pg.connect config.psDatabase , (err, client ) ->
+        client.query insertQuery, (err)->
+          client.end()
+          nameIndex.find 'test', (results) ->
+            expect(results).to.be.not.undefined
+            expect(results).to.be.not.empty
+            expect(results[0]).to.be.eql('test')
+            done()
 
     it 'should return array containing the valid name if already in index but in different (lower/upper/mixed) case', (done) ->
       insertQuery = 'INSERT INTO name_index (name, valid_name, validated) VALUES (\'prova\', \'test\', true) ; INSERT INTO name_index (name, valid_name, validated) VALUES (\'prova2\', \'test2\', false);'
-      connection.query insertQuery, (err)->
-
-        nameIndex.find 'TEST', (results) ->
-          expect(results).to.be.not.undefined
-          expect(results).to.be.not.empty
-          expect(results[0]).to.be.eql('test')
-          done()
+      pg.connect config.psDatabase , (err, client ) ->
+        client.query insertQuery, (err)->
+          client.end()
+          nameIndex.find 'TEST', (results) ->
+            expect(results).to.be.not.undefined
+            expect(results).to.be.not.empty
+            expect(results[0]).to.be.eql('test')
+            done()
 
     it 'should return array containing the valid name if the key differs of few letters with the valid name', (done) ->
       insertQuery = 'INSERT INTO name_index (name, valid_name, validated) VALUES (\'prova\', \'test\', true) ; INSERT INTO name_index (name, valid_name, validated) VALUES (\'prova2\', \'test2\', false);'
-      connection.query insertQuery, (err)->
-
-        nameIndex.find 'TESTA', (results) ->
-          expect(results).to.be.not.undefined
-          expect(results).to.be.not.empty
-          expect(results[0]).to.be.eql('test')
-          done()
+      pg.connect config.psDatabase , (err, client ) ->
+        client.query insertQuery, (err)->
+          client.end()
+          nameIndex.find 'TESTA', (results) ->
+            expect(results).to.be.not.undefined
+            expect(results).to.be.not.empty
+            expect(results[0]).to.be.eql('test')
+            done()
