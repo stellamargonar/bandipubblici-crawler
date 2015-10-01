@@ -261,6 +261,7 @@ describe 'NameIndex', ->
           client.query 'select * from name_index where valid_name=\'old_valid\'', (err, res) ->
             expect(res.rows).to.be.empty
             client.query 'select * from name_index where valid_name=\'new_valid\'', (err, res) ->
+              client.end()
               expect(res.rows).to.be.not.empty
               done()
 

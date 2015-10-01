@@ -2,6 +2,7 @@ chai = require 'chai'
 sinon = require 'sinon'
 mongoose = require 'mongoose'
 Call = (require '../lib/models/call.schema.js').Call
+pg = require 'pg'
 
 # get config for testing environment
 process.env.NODE_ENV = 'testing'
@@ -219,6 +220,11 @@ describe 'extractLoad', ->
         mongoose.connection.db.command { dropDatabase: 1 }, (err, result) ->
           mongoose.connection.close done
 
+      afterEach (done) ->
+        pg.connect config.psDatabase , (err, client) ->
+          client.query 'delete from name_index', ()->
+            client.end()
+            done()
 
       it 'should return no error and no result when call is missing', (done) ->
         (extractLoad.loadCall()) (err, results) ->
@@ -318,6 +324,38 @@ describe 'extractLoad', ->
                 expect(calls[0].provenances).contain('p1')
                 done()
 
+      it 'should store only calls that are not yet expired', (done) ->
 
+        call = {title : 'ciao', url: 'ciao', expiration: new Date(2014,10,4)}
+        (extractLoad.loadCall call) (err, res) ->
+          expect(err).to.be.undefined
+          expect(res).to.be.undefined
+          Call.find {title: 'ciao'}, (err, calls) ->
+            expect(calls).to.be.not.undefined
+            expect(calls).to.be.empty
+            done()
 
+      it 'should check name index and if institution is not present, add entry', (done) ->
+          call = {title : 'titolo', institution: 'input_name'}
+          (extractLoad.loadCall call) (err, res) ->
+            Call.find {title:'titolo'}, (err, calls) ->
+              expect(calls).to.be.not.empty
+              expect(calls[0].institution).to.be.eql('input_name')
 
+              pg.connect config.psDatabase , (err, client) ->
+                client.query 'select * from name_index where name=\'input_name\' ', (err, res) ->
+                  client.end()
+                  expect(res.rows).to.be.not.empty
+                  expect(res.rows[0].valid_name).to.be.eql 'input_name'
+                  done()
+
+      it 'should check name index and if institution is present substitute with that name', (done) ->
+        pg.connect config.psDatabase , (err, client) ->
+          client.query 'insert into name_index values (\'input_name\',\'valid_name\', true)', () ->
+            client.end()
+            call = {title : 'titolo', institution: 'input_name'}
+            (extractLoad.loadCall call) (err, res) ->
+              Call.find {title:'titolo'}, (err, calls) ->
+                expect(calls).to.be.not.empty
+                expect(calls[0].institution).to.be.eql('valid_name')
+                done()

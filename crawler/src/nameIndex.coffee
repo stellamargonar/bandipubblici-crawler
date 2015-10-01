@@ -10,7 +10,7 @@ class NameIndex
 
     constructor : () ->
       # establish connection
-      mongoose.createConnection
+#      mongoose.createConnection
 
       pg.connect config.psDatabase , (err, client, done ) ->
         console.error ('NAME INDEX ERROR connecting to database: ' + err) if err
@@ -35,7 +35,6 @@ class NameIndex
           # important: release client
           client.end()
           console.error schemaErr if schemaErr
-
 
     _submitQuery : (query, callback) ->
       pg.connect config.psDatabase , (err, client) ->
@@ -188,3 +187,4 @@ class NameIndex
         async.series fns, done
 
 module.exports = NameIndex
+

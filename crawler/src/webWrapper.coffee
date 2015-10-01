@@ -142,6 +142,21 @@ class WebWrapper
                     console.log err if err
                     return res.status(ERROR_STATUS).send(err) if err
                     return res.status(SUCCESS_STATUS).send()
+
+
+            server.get '/' + CLEAN_PATH + '/normalize', (req, res) =>
+                console.log 'Start normalize'
+                Call.find {}, (err, calls) =>
+                    fns = []
+                    reimport = (c) =>
+                        (done) =>
+                            (@_extractLoader.loadCall c) done
+                    (fns.push (reimport call))    for call in calls
+                    console.log 'completed cycle'
+                    async.series fns, (errors, results) =>
+                        console.log errors if errors
+                        res.status(SUCCESS_STATUS).send('DONE')
+
     _crawlSingleSource : (source) ->
         (cb) =>
             @_connection.queue config.amqp.queue.crawler , (queue) =>

@@ -9,6 +9,8 @@ urlparse = require 'url'
 amqp = require 'amqp'
 config = require '../config'
 
+nameIndexModule = (require './nameIndex.js')
+
 class ExtractLoad
 
   constructor: ->
@@ -30,6 +32,15 @@ class ExtractLoad
             (fns.push (@loadCall call)) for call in calls
             async.series fns, (errors) ->
               console.error errors if errors
+
+
+
+  nameIndexInstance = null
+  getNameIndex : () ->
+    nameIndexInstance ?= new nameIndexModule()
+    return nameIndexInstance
+
+
   ###
   given an html page, extracts the call present in the page
   accordinlgy to a specific pattern
@@ -134,7 +145,11 @@ class ExtractLoad
   ###
   loadCall: (call) ->
     (done) =>
-      if !call
+      if !call or !call.title
+        return done undefined, undefined
+
+      # check not yet expired
+      if call.expiration and call.expiration < new Date()
         return done undefined, undefined
 
       async.waterfall [
@@ -160,8 +175,22 @@ class ExtractLoad
 
         # check if call is already in the database
         (call, next) =>
-          Call.find {$or: [{url: call.url}, {title: call.title}, {normalizedTitle: call.normalizedTitle}]}, next
-        ,
+          conditions = [{title: call.title}, {normalizedTitle: call.normalizedTitle}]
+          conditions.push {url: call.url}   if call.url
+          Call.find {$or: conditions}, next
+
+        # replace institution with normalized name, or add to index
+        (duplicates, next) =>
+          if !call.institution
+            return next undefined, duplicates
+          @getNameIndex().get call.institution , (valid_name) =>
+            if !valid_name
+              @getNameIndex().insert call.institution, call.institution , () ->
+                next undefined, duplicates
+            else
+              call.institution = valid_name
+              next undefined, duplicates
+
         (duplicates, done) =>
           if duplicates and duplicates.length > 0
 
@@ -175,6 +204,7 @@ class ExtractLoad
             newCall = new Call call
             newCall.save (err, result) =>
               return done (err || undefined), result
+
 
       ], done
 
