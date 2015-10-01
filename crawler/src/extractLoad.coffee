@@ -138,17 +138,40 @@ class ExtractLoad
         return done undefined, undefined
 
       async.waterfall [
-        # check if call is already in the database
+        # pre process call (Compute normalized title
         (next) =>
-          Call.find {$or: [{url: call.url}, {title: call.title}]}, next
+          normalized = call.title
+          normalized = normalized.toLowerCase()
+          # accenti
+          normalized = normalized.replace /à|á|â|ä|æ|ã|å|ā/, 'a'
+          normalized = normalized.replace /è|é|ê|ë|ē|ė|ę/, 'e'
+          normalized = normalized.replace /î|ï|í|ī|į|ì/, 'i'
+          normalized = normalized.replace /ô|ö|ò|ó|œ|ø|ō|õ/, 'o'
+          normalized = normalized.replace /û|ü|ù|ú|ū/, 'u'
+
+          # punteggiatura
+          normalized = normalized.replace  /\[|\/|\.|,|-|#|!|\$|%|\^|&|\*|;|:|{|}|=|\-|_|`|~|\(|\)|\]|“|”|’|€/g, ' '
+          # trim
+          normalized = normalized.replace /\s{2,}/g, ' '
+          normalized = normalized.trim()
+
+          call.normalizedTitle = normalized
+          return next undefined, call
+
+        # check if call is already in the database
+        (call, next) =>
+          Call.find {$or: [{url: call.url}, {title: call.title}, {normalizedTitle: call.normalizedTitle}]}, next
         ,
         (duplicates, done) =>
           if duplicates and duplicates.length > 0
-#            console.log 'SAVE : found duplicate for call' + call.title + ' ' + call.provenance
+
+            # add new provenance
+            provenances = [duplicates[0].provenance].concat(duplicates[0].provenances || [])
+            call.provenances = []
+            ((call.provenances.push prov)  if((prov isnt call.provenance) and (prov not in call.provenances))) for prov in provenances
             Call.update {_id: duplicates[0]._id}, call, {upsert: true}, (err) ->
               return done (err || undefined), call
           else
-#            console.log 'SAVE : new call ' + call.title
             newCall = new Call call
             newCall.save (err, result) =>
               return done (err || undefined), result

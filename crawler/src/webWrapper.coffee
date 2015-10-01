@@ -118,6 +118,12 @@ class WebWrapper
                         return res.status(SUCCESS_STATUS).send('Done')
                 catch catch_error
                     console.error catch_error
+
+            server.get '/' + CLEAN_PATH + '/propagate' , (req, res) =>
+                @_nameIndex.propagateToCalls (err, results) =>
+                    return res.status(ERROR_STATUS).send err    if err
+                    return res.status(SUCCESS_STATUS).send('OK')
+
             server.get '/' + CLEAN_PATH + '/find', (req, res) =>
                 if !req.query.name
                     return res.status(ERROR_STATUS).send('Missing parameter name')
@@ -133,6 +139,7 @@ class WebWrapper
                 if ! req.body or !req.body.name or !req.body.valid_name
                     return res.status(ERROR_STATUS).send('Missing properties in payload')
                 @_nameIndex.update req.body.name, req.body.valid_name, (err) =>
+                    console.log err if err
                     return res.status(ERROR_STATUS).send(err) if err
                     return res.status(SUCCESS_STATUS).send()
     _crawlSingleSource : (source) ->

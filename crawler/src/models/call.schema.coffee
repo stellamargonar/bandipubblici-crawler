@@ -12,6 +12,9 @@ CallSchema = new Schema(
   expiration    : Date
   city          : String
   provenance : String
+
+  provenances: [String]
+  normalizedTitle : String
   
 )
 

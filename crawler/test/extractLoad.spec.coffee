@@ -1,5 +1,7 @@
 chai = require 'chai'
 sinon = require 'sinon'
+mongoose = require 'mongoose'
+Call = (require '../lib/models/call.schema.js').Call
 
 # get config for testing environment
 process.env.NODE_ENV = 'testing'
@@ -206,28 +208,115 @@ describe 'extractLoad', ->
         result = extractLoad._arrayMap [{prop1: 'ciao'}], second_array, 'prop2'
         expect(result).to.be.eql(first_array)
 
-      # it 'should create new object when value array is longer than first array', () ->
-      #   first_array = [{prop1: 'ciao'}]
-      #   second_array = ['oggi', 'piove']
-      #   result = extractLoad._arrayMap first_array, second_array, 'prop2'
-      #   expect(result).to.be.not.undefined
-      #   expect(result.length).to.be.eql(2)
-      #   expect(result[0]).to.have.property('prop1')
-      #   expect(result[0]).to.have.property('prop2')
-      #   expect(result[1]).to.have.property('prop2')
-      #   expect(result[1]).to.have.not.property('prop1')
 
 
+    describe 'loadCall' , ->
+      before (done) ->
+        mongoose.connect ('mongodb://' + config.database.host + '/' + config.database.dbName)
+        done()
+
+      after (done) ->
+        mongoose.connection.db.command { dropDatabase: 1 }, (err, result) ->
+          mongoose.connection.close done
 
 
+      it 'should return no error and no result when call is missing', (done) ->
+        (extractLoad.loadCall()) (err, results) ->
+          expect(err).to.be.undefined
+          expect(results).to.be.undefined
+          done()
 
+      it 'should save the call when there is no call with same title or same url', (done) ->
+        call = {title : 'Titolo1', url : 'ciao'}
+        (extractLoad.loadCall call) (err, res) ->
+          expect(res).to.be.not.undefined
+          expect(err).to.be.undefined
 
+          # check stored
+          Call.find {title: 'Titolo1'}, (err, calls) ->
+            expect(calls).to.be.not.undefined
+            expect(calls).to.be.not.empty
+            expect(calls[0].url).to.be.eql('ciao')
+            done()
 
+      it 'should update call if already in the db', (done) ->
+        call = new Call { title: 'Titolo2', url: 'myurl'}
+        call.save () ->
+          sameCall = { title: 'Titolo2', url: 'myurl', institution: 'comune'}
+          (extractLoad.loadCall sameCall) (err, res) ->
+            expect(err).to.be.undefined
+            expect(res).to.be.not.undefined
 
+            Call.find {title: 'Titolo2'}, (err, calls) ->
+              expect(calls).to.be.not.undefined
+              expect(calls).to.be.not.empty
+              expect(calls[0].url).to.be.eql('myurl')
+              expect(calls[0].institution).to.be.eql('comune')
+              done()
 
+      it 'should compute and store the normalized title', (done) ->
+        title = '  Selezione AdR2458/15 per il conferimento di 1 assegno di ricerca nel SSD ING-INF/05 SISTEMI DI ELABORAZIONE DELLE INFORMAZIONI, per l’attuazione del seguente programma di ricerca: “Studio di tecniche per la generazione automatica di codice a supporto dello sviluppo di applicazioni web centrate sui dati”, finanziato per un ammontare di € 23.140,00 nell’ambito del bando Joint Project 2014, progetto “uGene”, codice CUP B32C14000120003. [città]  '
+        normalized = 'selezione adr2458 15 per il conferimento di 1 assegno di ricerca nel ssd ing inf 05 sistemi di elaborazione delle informazioni per l attuazione del seguente programma di ricerca studio di tecniche per la generazione automatica di codice a supporto dello sviluppo di applicazioni web centrate sui dati finanziato per un ammontare di 23 140 00 nell ambito del bando joint project 2014 progetto ugene codice cup b32c14000120003 citta'
+        call = {title : title, url : 'ciao'}
+        (extractLoad.loadCall call) (err, res) ->
+          expect(res).to.be.not.undefined
+          expect(err).to.be.undefined
 
+          # check stored
+          Call.find {title: title}, (err, calls) ->
+            expect(calls).to.be.not.undefined
+            expect(calls).to.be.not.empty
+            expect(calls[0].url).to.be.eql('ciao')
+            expect(calls[0].normalizedTitle).to.be.eql(normalized)
+            done()
 
+      it 'should recognized as duplicate calls with the same normalized title, overwrite previous call property', (done) ->
+        title = 'Titolò'
+        call = new Call {title : title, url : 'ciao', normalizedTitle : 'titolo'}
+        call.save () ->
+          titolo2 = 'TITOLO'
+          sameCall = {title: titolo2, url : 'other url'}
+          (extractLoad.loadCall sameCall) (err, res) ->
+            expect(res).to.be.not.undefined
+            expect(err).to.be.undefined
 
+            # check stored
+            Call.find  {$or: [{title: title}, {title: titolo2}]}, (err, calls) ->
+              expect(calls).to.be.not.undefined
+              expect(calls).to.be.not.empty
+              expect(calls[0].title).to.be.eql(titolo2)
+              expect(calls[0].url).to.be.eql('other url')
+              done()
+
+      it 'should store all the provenances when recognize a duplicate', (done) ->
+        call = new Call {title: 't1', url: 'u1', provenance : 'p1'}
+        call.save () ->
+          sameCall = {title: 't2', url : 'u1', provenance : 'p2'}
+          (extractLoad.loadCall sameCall) (err, res) ->
+            expect(res).to.be.not.undefined
+            expect(err).to.be.undefined
+
+            Call.find {url: 'u1'}, (err, calls) ->
+              expect(calls).to.be.not.undefined
+              expect(calls).to.be.not.empty
+              expect(calls[0].provenances).contain('p1')
+              done()
+
+      it 'should store distinct provenances ', (done) ->
+        call = new Call {title: 't1', url: 'u1', provenance : 'p1'}
+        call.save () ->
+          sameCall = {title: 't2', url : 'u1', provenance : 'p2'}
+          sameCall2 = {title: 't3', url: 'u1', provenance: 'p3'}
+          (extractLoad.loadCall sameCall) (err, res) ->
+            (extractLoad.loadCall sameCall2) (err, res) ->
+
+              Call.find {url: 'u1'}, (err, calls) ->
+                expect(calls).to.be.not.undefined
+                expect(calls).to.be.not.empty
+
+                expect(calls[0].provenances).contain('p2')
+                expect(calls[0].provenances).contain('p1')
+                done()
 
 
 

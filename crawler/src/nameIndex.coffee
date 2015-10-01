@@ -93,14 +93,15 @@ class NameIndex
         throw new Error 'Invalid Callback'
 
       findMatchQuery =
-        text : 'SELECT valid_name, similarity(valid_name, $1) as sim FROM name_index WHERE similarity(valid_name, $1) > 0.4 order by sim desc'
+        text : 'SELECT valid_name, COUNT(name)/2 + similarity(valid_name, $1) AS rank FROM name_index WHERE similarity(valid_name, $1) > 0.4 GROUP BY valid_name ORDER BY rank DESC;'
+#        text : 'SELECT valid_name, similarity(valid_name, $1) as sim FROM name_index WHERE similarity(valid_name, $1) > 0.4 order by sim desc'
         values : [key]
 
       @_submitQuery findMatchQuery, (err, res) ->
-        distinctNames = {}
+        distinctNames = []
         for row in res.rows
-          distinctNames[row.valid_name] = 1
-        done Object.keys(distinctNames)
+          distinctNames.push row.valid_name
+        done distinctNames
 
     ###
     updates the entry corresponding to the given key with the given value.
@@ -120,7 +121,7 @@ class NameIndex
           done 'Error ' + err
         else
           # update monog institutions
-          Call.update {institution: key}, {institution: value}, (err) ->
+          Call.update {institution: key}, {institution: value}, {multi:true} , (err, rowsAffected) ->
             done (err || undefined)
 
 
@@ -141,7 +142,7 @@ class NameIndex
         return done (err || 'Error')  if err or !res or !res.rowCount
 
         # propagate to main db
-        Call.update {institution: valueOld}, {institution: valueNew}, (err) ->
+        Call.update {institution: valueOld}, {institution: valueNew}, (err, rowsAffected) ->
           done (err || undefined)
 
     ###
@@ -166,6 +167,24 @@ class NameIndex
         insert = (name) =>
           (cb) => @insert name, name, cb
         (fns.push (insert name) ) for name of distinctNames
+        async.series fns, done
+
+    propagateToCalls : (done) ->
+      Call.find {} , (err, data) =>
+        fns = []
+
+        updateCall = (call, newName) =>
+          (cb) =>
+            call.institution = newName
+            call.save cb
+
+        for call in data
+          if !call.institution
+            continue
+          # cerca in index
+          @get call.institution , (valid_name) =>
+            # sostituisci con nome giusto
+            (fns.push (updateCall call, valid_name))   if call.institution isnt valid_name
         async.series fns, done
 
 module.exports = NameIndex
