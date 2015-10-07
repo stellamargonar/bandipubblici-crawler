@@ -5,6 +5,7 @@ coffee = require 'gulp-coffee'
 istanbul = require 'gulp-istanbul'
 mocha = require 'gulp-mocha'
 plumber = require 'gulp-plumber'
+nodemon = require 'gulp-nodemon'
 
 gulp.on 'err', (e) ->
   gutil.beep()
@@ -32,7 +33,19 @@ gulp.task 'watch', ->
   gulp.watch './src/*.coffee', ['coffee', 'test']
   gulp.watch './test/*.coffee', ['test']
 
-gulp.task 'default', ['coffee']
+gulp.task 'serve', () ->
+  nodemon({
+    script: 'server.js',
+    ext: 'js coffee jade',
+    stdout: false
+  }).on 'readable', () ->
+    this.stdout.pipe process.stdout
+    this.stderr.pipe process.stderr
+
+
+
+
+gulp.task 'default', ['coffee', 'serve']
 
 
 # Handle the error
