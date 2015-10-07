@@ -7,6 +7,8 @@ nameIndexClass = require './nameIndex.js'
 async = require 'async'
 amqp = require 'amqp'
 config = require '../config'
+CronJob = (require 'cron').CronJob
+request = require 'request'
 
 class WebWrapper
     
@@ -89,8 +91,7 @@ class WebWrapper
                     @_sourceController.readAll (err, sources) =>
                         fns = {}
                         for source in sources
-                            if source.name.indexOf('Albo') isnt -1
-                                fns[source._id] = (@_crawlSingleSource source)
+                            fns[source._id] = (@_crawlSingleSource source)
                         async.series fns, (errors, results) =>
                             return res.status(ERROR_STATUS).send(errors) if errors
                             return res.status(SUCCESS_STATUS).send(results)
@@ -143,19 +144,37 @@ class WebWrapper
                     return res.status(ERROR_STATUS).send(err) if err
                     return res.status(SUCCESS_STATUS).send()
 
+            server.post '/' + CLEAN_PATH + '/mergeCall', (req, res) =>
+                console.log 'Post mergeCall '
+                baseCall = req.body.baseCall
+                calls = req.body.calls
+                singleMerge = (id1, id2) =>
+                    (cb) =>
+                        Call.findOne {_id : id1}, (err,call1) =>
+                            Call.findOne {_id : id2}, (err, call2) =>
+                                @_extractLoader.merge call1, call2, cb
+                fns = []
+                fns.push singleMerge baseCall, call     for call in calls
+                async.series fns, (err, result) =>
+                    return res.status(ERROR_STATUS).send(err) if err
+                    return res.status(SUCCESS_STATUS).send(result)
+            # starts cron job
+            @_planCrawler()
 
-            server.get '/' + CLEAN_PATH + '/normalize', (req, res) =>
-                console.log 'Start normalize'
-                Call.find {}, (err, calls) =>
-                    fns = []
-                    reimport = (c) =>
-                        (done) =>
-                            (@_extractLoader.loadCall c) done
-                    (fns.push (reimport call))    for call in calls
-                    console.log 'completed cycle'
-                    async.series fns, (errors, results) =>
-                        console.log errors if errors
-                        res.status(SUCCESS_STATUS).send('DONE')
+    # create cron job for crawling all sources every day
+    _planCrawler : () ->
+        cronTime = '00 00 8 * * *'
+        callback = () =>
+            console.log '--------------------------------------'
+            console.log '[CRON JOB] Starts crawling all sources'
+            request.post ('/' + SOURCE_PATH + '/crawl/'), (err, res, data) =>
+                console.log err if err
+                console.log res.statusCode
+                console.log '[CRON JOB] Done.'
+                console.log '--------------------------------------'
+
+        new CronJob cronTime, callback , null, true, 'Europe/Rome'
+
 
     _crawlSingleSource : (source) ->
         (cb) =>
