@@ -15,7 +15,7 @@ CallSchema = new Schema(
 
   provenances: [String]
   normalizedTitle : String
-  
+  alternativeTitle : [String]
 )
 
 CallSchema.virtual('date')

@@ -57,7 +57,7 @@ class ExtractLoad
       throw new Error 'MISSING_PARAMETER callback'
 
     if typeof page isnt 'string'
-      throw new TypeError 'INVALID PARAMETER page content ' + page
+      throw new TypeError 'INVALID PARAMETER page content '
     if typeof done isnt 'function'
       throw new TypeError 'INVALID PARAMETER callback'
 
@@ -65,6 +65,7 @@ class ExtractLoad
     context = patterns.call
 
     calls = []
+    calls.push {}   for elem in dom(patterns.call)
     call = {}
 
     for property, pattern of patterns
@@ -72,23 +73,24 @@ class ExtractLoad
         continue
       values = []
 
-      processMultiCall = (map, arg = undefined) =>
+      processMultiCall = (pattern , map, arg = undefined) =>
         domTag = dom(pattern, context)
         domTag.each (i, elem) =>
           values.push dom(elem)[map](arg)
-
         calls = @_arrayMap calls, values, property
 
       # pattern contains link
       if (pattern.slice(-2) is ' a') or (pattern.indexOf('a[') isnt -1) or (pattern.indexOf('a:') isnt -1) or (pattern.indexOf('>a') isnt -1)
-        processMultiCall 'attr', 'href'
+        processMultiCall pattern, 'attr', 'href'
+
       # pattern is exact value
       else if pattern.match '^\".+\"$'
         (values.push (pattern.replace /\"/g, ''))  for i in [0...(calls.length)]
         calls = @_arrayMap calls, values, property
       # normal case
       else
-        processMultiCall 'text'
+        processMultiCall pattern, 'text'
+
     if calls.length is 0
       return done undefined
 
@@ -113,16 +115,22 @@ class ExtractLoad
       if !calls[i].title
         console.log 'EXTRACTOR : Missing title for call ' + provenanceUrl
         calls.splice(i, 1)
+      else if 'esito' in calls[i].title.toLowerCase()
+        console.log 'EXTRACTOR : Not a valid title ' + calls[i].title
+        calls.splice(i, 1)
 
+    i = 0
     for call in calls
 
-# convert date
+      # convert date
       if call.expiration
+        call.expiration = call.expiration.replace '&nbsp;', ''
         call.expiration = momentjs call.expiration, ["DD MMMM, YYYY", "DD/MM/YYYY"], 'it'
         if call.expiration <= (new Date())
-          return undefined
-
-      # fix url
+          calls.splice i, 1
+          continue
+        call.expiration = undefined   if not call.expiration.isValid()
+        # fix url
       if call.url
         parsedUrl = urlparse.parse call.url
         if !parsedUrl.host # something is missing in the url..
@@ -131,13 +139,15 @@ class ExtractLoad
 
       # assign category
       if !call.type
-        if 'amministra' in call.title.toLowerCase()
+        if 'amministra' in call.title.toLowerCase() or call.provenance.match '\/ateneo\/bando-pta' or 'funzionari' in call.title.toLowerCase()
           call.type = 'amministrazione'
         else if 'didattica' in call.title.toLowerCase()
           call.type = 'didattica'
-        else if (call.institution) and ('universit' in call.institution.toLowerCase())
+        else if (call.institution) and (call.institution.toLowerCase().match 'universit')
           call.type = 'ricerca'
-
+        else if call.title.toLowerCase().match 'bors(a|e)'
+          call.type ?= 'premio'
+      i++
     return calls
 
   ###
@@ -175,8 +185,9 @@ class ExtractLoad
 
         # check if call is already in the database
         (call, next) =>
-          conditions = [{title: call.title}, {normalizedTitle: call.normalizedTitle}]
+          conditions = [{title: call.title}, {normalizedTitle: call.normalizedTitle}, {alternativeTitle: call.title}]
           conditions.push {url: call.url}   if call.url
+          conditions.push {provenance: call.provenance} if call.provenance
           Call.find {$or: conditions}, next
 
         # replace institution with normalized name, or add to index
@@ -193,13 +204,7 @@ class ExtractLoad
 
         (duplicates, done) =>
           if duplicates and duplicates.length > 0
-
-            # add new provenance
-            provenances = [duplicates[0].provenance].concat(duplicates[0].provenances || [])
-            call.provenances = []
-            ((call.provenances.push prov)  if((prov isnt call.provenance) and (prov not in call.provenances))) for prov in provenances
-            Call.update {_id: duplicates[0]._id}, call, {upsert: true}, (err) ->
-              return done (err || undefined), call
+            @merge call, duplicates[0], done
           else
             newCall = new Call call
             newCall.save (err, result) =>
@@ -207,6 +212,43 @@ class ExtractLoad
 
 
       ], done
+
+  merge : (call1, call2 = undefined, done) ->
+    if !call1  or !done
+      throw new Error 'Missing Parameter'
+    if (typeof done) isnt 'function'
+      throw  new Error 'Invalid Callback'
+    return done undefined, call1  if !call2
+
+
+    buff = call1.alternativeTitle || []
+    buff.push call2.title  if ((call2.title isnt call1.title) and (call2.title not in buff))
+    if call2.alternativeTitle
+      ((buff.push altTitle) if ((altTitle not in buff) and (altTitle isnt call1.title) ))     for altTitle in call2.alternativeTitle
+    call1.alternativeTitle = buff
+
+    buff = call1.provenances || []
+    buff.push call2.provenance if ((call2.provenance isnt call1.provenance) and (call2.provenance not in buff))
+    if call2.provenances
+      ((buff.push prov)   if ((prov not in buff) and (prov isnt call1.provenance)))  for prov in call2.provenances
+    call1.provenances = buff
+
+    call1.institution ?= call2.institution
+    call1.expiration ?= call2.expiration
+
+    if call1.expiration > call2.expiration
+      call1.expiration = call2.expiration
+    call1.text ?= call2.text
+    call1.type ?= call2.type
+    call1.city ?= call2.city
+
+
+    call1 = new Call call1    if !call1._id
+    call1.save (err, res) ->
+      return done (err||undefined), res if err or !call2._id
+
+      call2.remove (err, removeRes) =>
+        return done (err||undefined), res
 
 
 module.exports = ExtractLoad;

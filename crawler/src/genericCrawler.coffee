@@ -49,7 +49,7 @@ class GenericCrawler
 
 		cw.path = options.path || path
 		cw.initialPath = cw.path
-		cw.maxDepth = options.maxDepth || 4
+		cw.maxDepth = options.maxDepth || 5
 		cw.initialProtocol = options.initialProtocol || protocol || 'http'
 		cw.maxConcurrency = options.maxConcurrency || 2
 		cw.userAgent = 'Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0)'
@@ -83,14 +83,6 @@ class GenericCrawler
 
 		cw.on 'complete', () =>
 			cb pageErrors, pageContents
-
-		cw.on 'fetchredirect',  (queueItem, requestOptions) =>
-			console.log 'fetching redirect'
-			console.log queueItem.url
-
-		cw.on 'fetch404',  (queueItem, requestOptions) =>
-			console.log '404 fetching'
-			console.log queueItem.url
 
 		cw.start()
 

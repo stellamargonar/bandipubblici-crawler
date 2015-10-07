@@ -3,6 +3,7 @@ sinon = require 'sinon'
 mongoose = require 'mongoose'
 Call = (require '../lib/models/call.schema.js').Call
 pg = require 'pg'
+fs = require 'fs'
 
 # get config for testing environment
 process.env.NODE_ENV = 'testing'
@@ -14,8 +15,6 @@ extractLoadClass = require '../lib/extractLoad.js'
 
 expect = chai.expect
 chai.use require 'sinon-chai'
-
-console.log 'start tests'
 
 describe 'extractLoad', ->
     extractLoad = null
@@ -159,6 +158,18 @@ describe 'extractLoad', ->
           expect(result[1].title).to.be.eql('Title2')
           done()
 
+      it 'should assign properties as they are if pattern is specified between "" ', (done) ->
+        html = '<div class="bando"><h1>Title1</h1></div>'
+        patterns =
+          call : '.bando'
+          title : 'h1'
+          institution : '"università"'
+
+        extractLoad.extractCallFromPage html, patterns, '', (result) =>
+          expect(result).to.be.not.undefined
+          expect(result[0]).to.have.property('institution')
+          expect(result[0].institution).to.be.eql('università')
+          done()
           
     describe '_arrayMap', ->
       it 'should return first array when second array is undefined', () ->
@@ -221,10 +232,11 @@ describe 'extractLoad', ->
           mongoose.connection.close done
 
       afterEach (done) ->
-        pg.connect config.psDatabase , (err, client) ->
-          client.query 'delete from name_index', ()->
-            client.end()
-            done()
+        Call.remove {} , () ->
+          pg.connect config.psDatabase , (err, client) ->
+            client.query 'delete from name_index', ()->
+              client.end()
+              done()
 
       it 'should return no error and no result when call is missing', (done) ->
         (extractLoad.loadCall()) (err, results) ->
@@ -359,3 +371,78 @@ describe 'extractLoad', ->
                 expect(calls).to.be.not.empty
                 expect(calls[0].institution).to.be.eql('valid_name')
                 done()
+
+    describe 'merge' , ->
+      before (done) ->
+        mongoose.connect ('mongodb://' + config.database.host + '/' + config.database.dbName)
+        done()
+
+      after (done) ->
+        mongoose.connection.db.command { dropDatabase: 1 }, (err, result) ->
+          mongoose.connection.close done
+
+      afterEach (done) ->
+        Call.remove {} , done
+
+      it 'should return the first call when second is missing', (done) ->
+        extractLoad.merge {title: 'ciao'}, undefined, (err, results) ->
+          expect(err).to.be.undefined
+          expect(results).to.be.eql({title: 'ciao'})
+          done()
+
+      it 'should return the first call with alternative name and provenance from second call', (done) ->
+        call1 = {title : 'Titolo1', url : 'ciao', provenance : 'da_li'}
+        call2 = {title: 'Altro titolo', url: 'ciao', provenance : 'da_qui'}
+        extractLoad.merge call1, call2, (err, res) ->
+          expect(res).to.be.not.undefined
+          expect(err).to.be.undefined
+
+          expect(res.title).to.be.eql(call1.title)
+          expect(res.alternativeTitle).contain(call2.title)
+          expect(res.provenance).to.be.eql(call1.provenance)
+          expect(res.provenances).contain(call2.provenance)
+          expect(res.url).to.be.eql(call1.url)
+          done()
+
+      it 'should delete the second call if it was already stored in db', (done) ->
+        call1 = new Call {title : 'Titolo1', url : 'ciao', provenance : 'da_li'}
+        call2 = new Call {title: 'Altro titolo', url: 'ciaoone', provenance : 'da_qui'}
+        call1.save () ->
+          call2.save () ->
+            extractLoad.merge call1, call2, (err, res) ->
+              expect(res).to.be.not.undefined
+              expect(err).to.be.undefined
+
+              Call.find {title: call2.title}, (err, calls) ->
+                expect(calls).to.be.empty
+                done()
+
+      it 'should store merged instance in system', (done) ->
+        call1 = new Call {title : 'Titolo1', url : 'ciao', provenance : 'da_li'}
+        call2 = new Call {title: 'Altro titolo', url: 'ciaoone', provenance : 'da_qui'}
+        call1.save () ->
+          extractLoad.merge call1, call2, (err, res) ->
+            expect(res).to.be.not.undefined
+            expect(err).to.be.undefined
+
+            Call.find {title: call1.title}, (err, calls) ->
+              expect(calls).to.be.not.empty
+              call = calls[0]
+              expect(call.title).to.be.eql(call1.title)
+              expect(call.alternativeTitle).contain(call2.title)
+              expect(call.provenance).to.be.eql(call1.provenance)
+              expect(call.provenances).contain(call2.provenance)
+              expect(call.url).to.be.eql(call1.url)
+              done()
+
+      it 'should merge call from same provenance but different title', (done) ->
+        call1 = new Call {title : 'Titolo1', url : 'ciao', provenance : 'da_li'}
+        (extractLoad.loadCall call1) (err, res) ->
+          call1.title = 'New Title'
+          extractLoad.merge res, call1, (err, newRes) ->
+            expect(err).to.be.undefined
+            expect(newRes.title).to.be.eql('Titolo1')
+            expect(newRes.alternativeTitle).contain(call1.title)
+            expect(newRes.provenance).to.be.eql(call1.provenance)
+            expect(newRes.provenances).to.be.empty
+            done()
